@@ -1,5 +1,0 @@
-namespace: deploy-reaper-test
-
-resources:
-- ../../../config/crd
-- ../cass-operator-crd

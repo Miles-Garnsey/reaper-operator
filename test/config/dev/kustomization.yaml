@@ -1,7 +1,7 @@
 namespace: reaper-dev
 
 resources:
-- ../cass-operator-crd
+- https://github.com/jetstack/cert-manager/releases/download/v1.5.4/cert-manager.yaml
 - ../cass-operator
 - ../cassdc
 - ../../../config/crd
