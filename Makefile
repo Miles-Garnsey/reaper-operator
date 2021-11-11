@@ -1,5 +1,5 @@
+.SHELLFLAGS = -e -c
 SHELL := /bin/bash
-
 # Current Operator version
 VERSION ?= 0.0.1
 # Default bundle image tag
@@ -18,7 +18,7 @@ PROJECT=reaper-operator
 REG?=docker.io
 
 BRANCH=$(shell git rev-parse --abbrev-ref HEAD)
-REV=$(shell git rev-parse --short=12 HEAD)
+REV=$(shell git rev-parse --short=8 HEAD)
 
 IMAGE_BASE=$(REG)/$(ORG)/$(PROJECT)
 REV_IMAGE=$(IMAGE_BASE):$(REV)
@@ -37,10 +37,13 @@ else
 GOBIN=$(shell go env GOBIN)
 endif
 
+KREW_INSTALLED=$(shell kubectl krew; $?)
+KUTTL_KIND_CFG ?= "./test/config/kind/w1k1.21.yaml"
+
 all: manager
 
 # Run tests
-ENVTEST_ASSETS_DIR=$(shell pwd)/testbin
+ENVTEST_ASSETS_DIR=$(shell pwd)/testbin/bin
 test: generate fmt vet manifests
 	mkdir -p ${ENVTEST_ASSETS_DIR}
 	test -f ${ENVTEST_ASSETS_DIR}/setup-envtest.sh || curl -sSLo ${ENVTEST_ASSETS_DIR}/setup-envtest.sh https://raw.githubusercontent.com/kubernetes-sigs/controller-runtime/v0.8.3/hack/setup-envtest.sh
@@ -54,6 +57,19 @@ manager: generate fmt vet
 # Run against the configured Kubernetes cluster in ~/.kube/config
 run: generate fmt vet manifests
 	go run ./main.go
+
+# E2E tests from kuttl
+kuttl-test: install-kuttl
+	PATH="./testbin/bin:$$PATH"; kubectl-kuttl test --kind-config=${KUTTL_KIND_CFG}
+
+ # Install kuttl for e2e tests.
+install-kuttl: 
+	mkdir -p ./testbin/bin ; \
+	cd ./testbin/bin ; \
+	OS="$$(uname | tr '[:upper:]' '[:lower:]')" ; \
+  	ARCH="$$(uname -m | sed -e 's/\(arm\)\(64\)\?.*/\1\2/' -e 's/aarch64$$/arm64/')" ; \
+	curl -LO https://github.com/kudobuilder/kuttl/releases/download/v0.11.1/kuttl_0.11.1_$${OS}_$${ARCH}.tar.gz ; \
+	tar -zxvf kuttl_0.11.1_$${OS}_$${ARCH}.tar.gz ; 
 
 # Install CRDs into a cluster
 install: manifests kustomize
@@ -96,7 +112,7 @@ generate: controller-gen
 # Build the docker image
 docker-build:
 	@echo Building ${REV_IMAGE}
-	docker build . -t ${REV_IMAGE}
+	docker build -t ${REV_IMAGE} .
 	docker tag ${REV_IMAGE} ${LATEST_IMAGE}
 
 # Push the docker image
@@ -141,7 +157,7 @@ endif
 
 # Generate bundle manifests and metadata, then validate generated files.
 .PHONY: bundle
-bundle: manifests
+bundle: manifests kustomize
 	operator-sdk generate kustomize manifests -q
 	cd config/manager && $(KUSTOMIZE) edit set image controller=$(IMG)
 	$(KUSTOMIZE) build config/manifests | operator-sdk generate bundle -q --overwrite --version $(VERSION) $(BUNDLE_METADATA_OPTS)
